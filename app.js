@@ -382,6 +382,7 @@ async function rejoindre() {
     }
     $('localVideo').srcObject = localStream;
     majBoutons();
+    detecterCameras();
 
     setStatus('Préparation de la clé…');
     ({ roomId, cleAuth } = await deriverCles(cle));
@@ -1004,6 +1005,77 @@ function arreterPartage() {
 }
 
 /* =====================================================================
+ * Caméra avant / arrière (smartphones), ou webcam suivante (ordinateur)
+ * ===================================================================== */
+
+let faceCamera = 'user'; // 'user' = avant, 'environment' = arrière
+
+// Le bouton n'apparaît que s'il y a au moins deux caméras
+async function detecterCameras() {
+    if (sansCamera) return;
+    try {
+        const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+        $('btnSwitch').hidden = cams.length < 2;
+    } catch {}
+    const t = cameraTrack();
+    faceCamera = (t && t.getSettings().facingMode) || 'user';
+}
+
+const ouvrirCamera = async contraintes =>
+    (await navigator.mediaDevices.getUserMedia({ video: contraintes })).getVideoTracks()[0];
+
+async function changerCamera() {
+    if (!localStream || sansCamera) return;
+    $('btnSwitch').disabled = true;
+    const ancienne = cameraTrack();
+    const etaitActive = ancienne ? ancienne.enabled : true;
+    const ancienId = ancienne && ancienne.getSettings().deviceId;
+    const cible = faceCamera === 'environment' ? 'user' : 'environment';
+    const qualite = QUALITE_CAM[$('selCam').value].contraintes;
+
+    // Beaucoup de téléphones ne peuvent pas ouvrir deux caméras à la fois :
+    // on ferme d'abord l'actuelle.
+    if (ancienne) ancienne.stop();
+
+    let nouvelle = null;
+    try {
+        // Smartphone : on demande explicitement l'autre face
+        nouvelle = await ouvrirCamera({ ...qualite, facingMode: { exact: cible } });
+    } catch {
+        // Pas de notion avant/arrière (ordinateur avec 2 webcams) : caméra suivante
+        try {
+            const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+            const i = cams.findIndex(c => c.deviceId === ancienId);
+            const suivante = cams[(i + 1) % cams.length];
+            nouvelle = await ouvrirCamera({ ...qualite, deviceId: { exact: suivante.deviceId } });
+        } catch (e) { console.warn('Changement de caméra impossible', e); }
+    }
+    if (!nouvelle) {
+        // Échec : on rouvre la caméra d'origine
+        try { nouvelle = await ouvrirCamera(ancienId ? { ...qualite, deviceId: { exact: ancienId } } : qualite); }
+        catch (e) { signaler('⚠️ Impossible de rouvrir la caméra.'); }
+    }
+
+    if (nouvelle) {
+        nouvelle.enabled = etaitActive; // caméra coupée → reste coupée
+        if (ancienne) localStream.removeTrack(ancienne);
+        localStream.addTrack(nouvelle);
+        faceCamera = nouvelle.getSettings().facingMode || 'user';
+        derniereCapture = null; // réappliquer la qualité choisie à la nouvelle caméra
+        if (!screenTrack) {
+            await envoyerVideo(nouvelle);
+            $('localVideo').srcObject = null;   // forcer l'aperçu à prendre la nouvelle piste
+            $('localVideo').srcObject = localStream;
+        } else {
+            appliquerQualite(); // partage d'écran en cours : la caméra reviendra à la fin
+        }
+        $('localVideo').classList.toggle('arriere', faceCamera === 'environment');
+    }
+    $('btnSwitch').disabled = false;
+    majBoutons();
+}
+
+/* =====================================================================
  * Quitter
  * ===================================================================== */
 
@@ -1026,7 +1098,9 @@ function raccrocher() {
     roomId = null;
     cleAuth = null;
     if (screenTrack) { screenTrack.onended = null; screenTrack.stop(); screenTrack = null; }
-    $('localVideo').classList.remove('ecran');
+    $('localVideo').classList.remove('ecran', 'arriere');
+    $('btnSwitch').hidden = true;
+    faceCamera = 'user';
     if (localStream) localStream.getTracks().forEach(t => t.stop());
     localStream = null;
     $('localVideo').srcObject = null;
@@ -1073,6 +1147,7 @@ $('btnGenerer').onclick = () => {
 };
 $('btnMic').onclick = () => basculer('audio');
 $('btnCam').onclick = () => basculer('video');
+$('btnSwitch').onclick = changerCamera;
 $('btnHangup').onclick = raccrocher;
 $('btnScreen').onclick = partagerEcran;
 $('selCam').onchange = appliquerQualite;

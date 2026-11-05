@@ -94,6 +94,7 @@
         video { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 12px; background: #222; display: block; }
         #localVideo { transform: scaleX(-1); } /* miroir uniquement pour soi */
         #localVideo.ecran, .distant video { transform: none; object-fit: contain; }
+        #localVideo.arriere { transform: none; } /* caméra arrière : pas de miroir */
 
         /* ----- Mode plein écran : participants en grille + mon aperçu en vignette ----- */
         #call.focus {
@@ -169,6 +170,7 @@
         <div class="controls">
             <button id="btnMic">🎤 Micro</button>
             <button id="btnCam">📷 Caméra</button>
+            <button id="btnSwitch" hidden>🔄 Changer de caméra</button>
             <button id="btnScreen">🖥️ Partager l'écran</button>
             <button id="btnFull">⛶ Plein écran</button>
             <br>

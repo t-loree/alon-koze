@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!--
+        Politique de sécurité du contenu : seuls les fichiers de ce site peuvent
+        s'exécuter, et la page ne peut contacter que le serveur de signalisation PeerJS.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="
+        default-src 'none';
+        script-src 'self';
+        style-src 'self' 'unsafe-inline';
+        img-src 'self' data:;
+        media-src 'self' blob: mediastream:;
+        connect-src 'self' https://0.peerjs.com wss://0.peerjs.com;
+        manifest-src 'self';
+        worker-src 'self';
+        base-uri 'none';
+        form-action 'none'">
+    <meta name="referrer" content="no-referrer">
+    <title>Alon Kozé</title>
+    <!-- Application installable (PWA) -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#121212">
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Alon Kozé">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <!-- PeerJS 1.5.4, copie locale vérifiée (intégrité npm + empreinte SRI) -->
+    <script src="vendor/peerjs.min.js"
+            integrity="sha384-nlUQ8ZqCbvStErob+biJNzSgltf6urV3VGqhfIfzhmg9RXmpeRm76ELw0pYnKlTR"></script>
+    <script src="app.js" defer></script>
+    <style>
+        * { box-sizing: border-box; }
+        [hidden] { display: none !important; }
+        body {
+            font-family: system-ui, 'Segoe UI', sans-serif;
+            background: #121212;
+            color: #fff;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container { text-align: center; width: 100%; max-width: 1200px; padding: 16px; }
+        .setup-box {
+            background: #1e1e1e;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            display: inline-block;
+            max-width: 100%;
+        }
+        .setup-box label { display: block; font-size: 14px; color: #aaa; margin-top: 8px; }
+        input, button {
+            padding: 12px;
+            margin: 6px;
+            border-radius: 8px;
+            border: none;
+            font-size: 16px;
+        }
+        input { width: 260px; max-width: 100%; background: #333; color: #fff; }
+        button { background: #007bff; color: #fff; cursor: pointer; font-weight: 600; }
+        button:hover { filter: brightness(1.15); }
+        button:disabled { opacity: .6; cursor: wait; }
+        button.off { background: #555; }
+        button.danger { background: #d9363e; }
+        button.petit { padding: 8px 10px; margin: 2px; font-size: 14px; background: #333; }
+        .hint { font-size: 12px; color: #888; }
+        #force { font-size: 13px; min-height: 1.2em; margin: 2px 0 6px; }
+        #force.faible { color: #ff6b6b; }
+        #force.moyenne { color: #ffb347; }
+        #force.forte { color: #5cd65c; }
+        #status { margin: 10px 0; color: #aaa; font-style: italic; }
+        #status.alerte { color: #ffb347; font-style: normal; }
+
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 12px;
+        }
+        .tile { position: relative; }
+        .tile span {
+            position: absolute; left: 10px; bottom: 10px; max-width: calc(100% - 20px);
+            background: rgba(0,0,0,.6); padding: 2px 8px; border-radius: 6px; font-size: 13px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .tile.attente span::after { content: ' · vérification…'; color: #aaa; }
+        .tile.distant { cursor: zoom-in; }
+        video { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 12px; background: #222; display: block; }
+        #localVideo { transform: scaleX(-1); } /* miroir uniquement pour soi */
+        #localVideo.ecran, .distant video { transform: none; object-fit: contain; }
+
+        /* ----- Mode plein écran : participants en grille + mon aperçu en vignette ----- */
+        #call.focus {
+            position: fixed; inset: 0; z-index: 10;
+            background: #000; padding: 0;
+        }
+        #call.focus .video-grid {
+            position: absolute; inset: 0; gap: 4px;
+            grid-template-columns: repeat(var(--cols, 1), 1fr);
+            grid-template-rows: repeat(var(--rows, 1), 1fr);
+        }
+        #call.focus .distant { min-height: 0; }
+        #call.focus .distant video { width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; }
+        #call.focus .video-grid.epingle .distant:not(.pin) { display: none; }
+        #call.focus .pin { cursor: zoom-out; }
+        #call.focus #localTile {
+            position: absolute; right: 16px; bottom: 110px; z-index: 2;
+            width: 20vw; min-width: 130px; max-width: 280px;
+            box-shadow: 0 4px 16px rgba(0,0,0,.7); border-radius: 12px;
+            transition: bottom .3s;
+        }
+        #call.focus #status {
+            position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 3;
+            margin: 0; padding: 4px 12px; border-radius: 8px; background: rgba(0,0,0,.55);
+        }
+        #call.focus .controls {
+            position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; margin: 0;
+            padding: 12px 16px 16px; background: linear-gradient(transparent, rgba(0,0,0,.8));
+            transition: opacity .3s;
+        }
+        /* Souris immobile : on masque les contrôles, la vignette descend */
+        #call.focus.repos .controls, #call.focus.repos #status { opacity: 0; pointer-events: none; }
+        #call.focus.repos { cursor: none; }
+        #call.focus.repos #localTile { bottom: 16px; }
+
+        .controls { margin-top: 16px; }
+        .qualite { display: inline-block; margin: 6px; font-size: 14px; color: #ccc; }
+        .qualite select {
+            padding: 10px; border-radius: 8px; border: none; font-size: 15px;
+            background: #333; color: #fff; cursor: pointer;
+        }
+        .qualite select:disabled { opacity: .5; cursor: default; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🔒 Alon Kozé</h1>
+
+    <div id="setup" class="setup-box">
+        <label for="pseudo">Ton prénom</label>
+        <input type="text" id="pseudo" placeholder="Ex : Tom" maxlength="30" autocomplete="nickname">
+        <label for="secretKey">Clé secrète du salon</label>
+        <input type="password" id="secretKey" placeholder="Ex : cheval-agrafe-batterie-lune" autocomplete="off" spellcheck="false">
+        <br>
+        <button id="btnVoir" class="petit" type="button">👁 Afficher</button>
+        <button id="btnGenerer" class="petit" type="button">🎲 Générer une clé</button>
+        <div id="force"></div>
+        <button id="btnJoin">Rejoindre / Créer le salon</button>
+        <p class="hint">La clé ne quitte jamais ton appareil. Chaque participant doit prouver<br>
+            qu'il la connaît avant de recevoir ton son et ton image.<br>
+            Jusqu'à 8 personnes, qui peuvent arriver et partir à tout moment.</p>
+        <button id="btnInstall" hidden>📲 Installer l'application</button>
+        <p id="iosHint" class="hint" hidden>Sur iPhone : bouton Partager <b>⎋</b> puis « Sur l'écran d'accueil ».</p>
+    </div>
+
+    <div id="call" hidden>
+        <div id="status">Initialisation…</div>
+        <div class="video-grid" id="grille">
+            <div class="tile" id="localTile"><video id="localVideo" autoplay muted playsinline></video><span id="localLabel">Moi</span></div>
+            <!-- les tuiles des participants sont ajoutées ici -->
+        </div>
+        <div class="controls">
+            <button id="btnMic">🎤 Micro</button>
+            <button id="btnCam">📷 Caméra</button>
+            <button id="btnScreen">🖥️ Partager l'écran</button>
+            <button id="btnFull">⛶ Plein écran</button>
+            <br>
+            <label class="qualite">Qualité webcam
+                <select id="selCam">
+                    <option value="auto" selected>Auto</option>
+                    <option value="basse">Basse (240p, éco)</option>
+                    <option value="moyenne">Moyenne (480p)</option>
+                    <option value="haute">Haute (720p)</option>
+                    <option value="hd">Très haute (1080p)</option>
+                </select>
+            </label>
+            <label class="qualite" id="qualiteEcran" hidden>Qualité écran
+                <select id="selEcran">
+                    <option value="texte" selected>Texte net (peu fluide)</option>
+                    <option value="equilibre">Équilibré</option>
+                    <option value="fluide">Fluide (vidéo, animations)</option>
+                    <option value="eco">Économie de bande passante</option>
+                </select>
+            </label>
+            <button id="btnHangup" class="danger">Raccrocher</button>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,19 @@
+# Fichiers système
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Éditeurs
+.vscode/
+.idea/
+*.swp
+*~
+
+# Outils et dépendances (au cas où)
+node_modules/
+.claude/
+
+# Fichiers locaux à ne jamais publier
+*.local
+*.log
+.env
